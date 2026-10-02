@@ -1,68 +1,190 @@
+# Maze Random Generator (Unity)
 
-![Maze](https://user-images.githubusercontent.com/62213937/234410011-0cd4ac6d-ca16-4387-8e48-5c4abe584539.PNG)
+A production-ready random maze generator for Unity: four algorithms, deterministic seeds, entrances
+and exits, loops (braiding), a single-mesh renderer, path finding, a minimap, a first person demo and
+a full test suite - all without a single package dependency.
 
-# Maze Random Generator Unity with Prim's Algorithm
- Simple Unity project that creates a random maze with boxes as walls using a version of Prim's Algorithm.
+![Mesh preview](Docs/images/mesh-preview.png)
 
-## Installation
+> **Originally** a single `MazeGenerator.cs` script that placed one cube per wall cell using a
+> modified Prim's algorithm. This version keeps the idea and turns it into a documented, tested and
+> configurable generator (`Core`, `Algorithms`, `Generation`, `Analysis`, `Rendering`, `Gameplay`,
+> `Presentation`, `UI`). See [Docs/Changelog.md](Docs/Changelog.md) for the complete list of fixes
+> and features.
 
-Download the project and add it to the Unity Hub. The only requirement is to have the Unity version **2021.3.21f1**.
-    
-## Project Layout
-In this Unity project, the following folders have the following content:
+## Features
 
-- **Code**
-    - **Scripts**
-        - **MazeGenerator.cs** : Script that handles the creation of the random maze every time the project is played.
-- **Prefabs**
-    - **Wall:** A rectangular cuboid (a bulit-in 3D box enlarged) with a third party texture.
-- **Scenes**
-    - **Demo:** Simple scene where you can see the algorithm in action.
-- **Third Party**
-    - **Ciathyza:** [Gridbox Prototype Materials](https://assetstore.unity.com/packages/2d/textures-materials/gridbox-prototype-materials-129127)
+* **Four algorithms** - Randomized Prim, Depth First (recursive backtracker), Randomized Kruskal,
+  Binary Tree - interchangeable through `IMazeAlgorithm` + `MazeAlgorithmRegistry`.
+* **Deterministic seeds** - a seed always produces the same maze, on every machine and platform
+  (custom xorshift128 RNG, no `UnityEngine.Random` in the generator).
+* **Entrances and exits** - sealed, random or fixed entrance/exit sides; the original project could
+  not open the maze at all.
+* **Braiding** - remove a fraction of the dead ends to create loops and easier mazes.
+* **Single mesh rendering** - hidden faces culled, floor submesh, 16/32 bit index buffers,
+  **one draw call** instead of one per wall. Prefab mode is still available and pooled.
+* **Path finding & minimap** - BFS solution path with a `LineRenderer`, top-down minimap rendered
+  into a `RenderTexture` on its own layer.
+* **Playable demo** - first person player (walk/sprint/jump/head bob), orbit and free fly cameras,
+  runtime HUD with statistics and authoring controls, objective tracking ("reach the exit").
+* **Statistics** - walls, passages, corridors, dead ends, junctions, depth, solution length,
+  perfection and connectivity, live in the HUD and in the inspector.
+* **Export / import** - versioned JSON documents (settings + grid + statistics), ASCII art,
+  PNG preview, seed sharing.
+* **Editor tooling** - rewritten inspector with preview generation, scene view highlighting,
+  one click demo rig (`GameObject → Create Demo Rig`), batch validation of all algorithms.
+* **Tested** - Unity EditMode NUnit suite plus a dependency-free Python reference implementation with
+  658 invariant checks (`Tools/Reference/verify_maze_reference.py`).
 
-## Demo
+![Algorithm comparison](Docs/images/algorithm-comparison.png)
 
-In the demo there is a camera above the random maze generated to see the results.
+## Quick start
 
-## Prim's Algorithm Modifications
-Prim's algorithm is a greedy algorithm for finding a minimum spanning tree for a weighted undirected graph. If we applie this idea to a randomly weighted grid graph, the algorithm can be modified to generate a random maze. In this modification, the graph with vertices it changes to a "cell/square" in the maze. By randomizing the weights between cells, the minimum spanning tree will resemble a maze.
+1. Add the folder to Unity Hub (Unity **2021.3 LTS** or newer, built-in render pipeline).
+2. Open `Assets/Scenes/Demo.unity` and press **Play**.
 
-**The final algorithm has the following structure:**
+| Input | Action |
+| --- | --- |
+| `W A S D` | Walk |
+| `Shift` / `Space` | Sprint / jump |
+| Mouse | Look (click to lock the cursor) |
+| `P` | Solution path |
+| `1` / `2` / `3` | First person / orbit / free fly camera |
+| `R` | New random maze |
+| `F1` / `Tab` / `M` | Panels / statistics / minimap |
 
-(The maze consists of a 2 dimensional array of cells, where a cell has 2 states: `Wall` or `Passage`)
-1. Begin with all cells being `Walls`
-2. A random cell is selected `(x, y)` and set it to be a `passage` and the initial cell of the maze
-3. Get the frontiers cells of the initial cell and add them to a set `s` that contains all frontier cells. The frontier cells of a cell are all cells walls within an exact distance of two, diagonals excluded
+### Use it in your own scene
 
-![Frontier](https://user-images.githubusercontent.com/62213937/234407861-16f18ae1-b189-4ccd-87cb-158a0fdade57.png)
+```csharp
+using Maze;
+using Maze.Core;
 
-4. While there's frontier cells in `s`:
-- Selecte a random cell `(x, y)` from `s`, make it a `passage` and remove it from `s`
-- Get his neighbours (`passage` cells at an exact distance of two, diagonals excluded) and store it in a set `ns`
+MazeGenerator generator = GetComponent<MazeGenerator>();
+generator.Settings.Algorithm = MazeAlgorithmKind.DepthFirst;   // winding corridors
+generator.Settings.BraidFactor = 0.3f;                         // remove 30 % of the dead ends
+generator.Settings.OpeningMode = MazeOpeningMode.FixedEntranceAndExit;
 
-![Neighbours](https://user-images.githubusercontent.com/62213937/234407941-5e6f3db1-cbe0-41cb-9b0b-1e98aeff9bf0.png)
+MazeResult result = generator.GenerateWithSeed(20240517);
+Debug.Log($"seed {result.Statistics.Seed}: {result.Statistics.DeadEndCount} dead ends, " +
+          $"{result.MeshData.TriangleCount} triangles in {result.GenerationMilliseconds:0.0} ms");
 
-- Make the cell between `(x, y)` and a random neighbour `(nx, ny)` a `passage`
+// result.SpawnPosition / ExitPosition / SolutionPath / Grid / Statistics are ready to use.
+```
 
-![Connect](https://user-images.githubusercontent.com/62213937/234407995-e02a7bf0-2e2b-4187-ad06-82b24a95cf54.png)
+Or without any scene objects at all (the core is plain C#):
 
-(Images from [Arne Stenkrona](https://github.com/ArneStenkrona/MazeFun))
+```csharp
+using Maze.Core;
+using Maze.Generation;
 
-- Add the frontier cells of `(x, y)` (if any) to `s`
+MazeGenerationOutput output = new MazeGeneratorCore().Generate(
+    new MazeGeneratorSettings { MazeWidth = 101, MazeHeight = 101 }, seed: 1234);
+string ascii = output.Grid.ToAscii();
+```
 
-## Limitations
-The maze generated has some peculiar characteristics.
-1. **Outer edge wall:** The edge of the maze will never have a passage, meaning that the maze has neither exit nor entrance (the script must be modified for this).
-2. **Maze size and initial cell:** Depending on the initial cell and the size of the maze, an entire column or row may be in a wall state. This is because the frontier cells are at a distance of two, and if a path is generated in the row or column before the outer wall this path will never reach that row or column.
-3. **No loop paths:** The algorithm only creates short dead ends.
+Full walkthrough: [Docs/GettingStarted.md](Docs/GettingStarted.md).
+
+## Rendering modes
+
+| Mode | What it creates | Draw calls (21×21) | Triangles |
+| --- | --- | --- | --- |
+| `Mesh` (default) | one mesh + optional floor, one mesh collider | 1 | 1 452 vs 2 904 (cube per wall) |
+| `Prefabs` | one wall prefab instance per wall cell, pooled | 242 | 2 904 |
+
+Mesh mode is an order of magnitude cheaper for large mazes (31 752 wall cells in a 251×251 maze:
+1 draw call vs 31 752). Details and measurements: [Docs/Performance.md](Docs/Performance.md).
+
+## Braiding
+
+Dead ends can be removed progressively - `0` keeps a perfect maze, `1` creates a loop rich maze
+without dead ends:
+
+![Braid comparison](Docs/images/braid-comparison.png)
+
+## Solution path
+
+![Solution path](Docs/images/solution-path.png)
+
+## Project layout
+
+```
+Assets/Code/
+├── Scripts/           runtime assembly (Maze.Runtime)
+│   ├── MazeGenerator.cs   facade component + settings
+│   ├── Core/              grid model, settings, deterministic RNG, directions
+│   ├── Algorithms/        Prim, DFS, Kruskal, Binary Tree + registry
+│   ├── Generation/        pipeline, openings, braiding, baking, statistics
+│   ├── Analysis/          BFS path finding, connectivity, dead ends, junctions
+│   ├── Rendering/         mesh builder, palettes, material factory
+│   ├── Gameplay/          player controller, objective tracker, input gateway
+│   ├── Presentation/      camera rig, minimap, solution path renderer
+│   ├── UI/                runtime HUD (IMGUI)
+│   └── Tools/             ASCII and JSON export
+├── Editor/            editor assembly (Maze.Editor): inspector, menus, scene builder
+└── Tests/EditMode/    NUnit tests (Maze.Tests.EditMode)
+Tools/Reference/       Python reference implementation, verifier, benchmark, doc images, C# lint
+Docs/                  Documentation and generated diagrams
+```
+
+## Documentation
+
+| Document | Content |
+| --- | --- |
+| [Getting Started](Docs/GettingStarted.md) | Install, demo, controls, own scenes, builds |
+| [Architecture](Docs/Architecture.md) | Design, pipeline, folder map, extension points |
+| [Algorithms](Docs/Algorithms.md) | The four algorithms, openings, braiding, theory |
+| [Configuration](Docs/Configuration.md) | Every setting with defaults and effects |
+| [API](Docs/API.md) | Components, core types, tools, editor menus, examples |
+| [Performance](Docs/Performance.md) | Measured numbers, complexity, guidance |
+| [Testing](Docs/Testing.md) | Test suites, reference verifier, CI |
+| [Troubleshooting](Docs/Troubleshooting.md) | Pink materials, input system, minimap, ... |
+| [Contributing](Docs/Contributing.md) | Style, adding an algorithm, PR checklist |
+| [Changelog](Docs/Changelog.md) | Fixes and features compared to the original |
+
+## Requirements and limitations
+
+* Unity **2021.3 LTS** or newer; built-in render pipeline by default (URP/HDRP are supported through
+  runtime shader detection or explicit material overrides).
+* The legacy **Input Manager** is used (`Project Settings → Player → Active Input Handling`).
+  Switching to the new Input System package requires adapting `MazePlayerController` and
+  `MazeCameraRig`.
+* Grid sizes are clamped to an odd interior between 5 and 501 cells per side (the room lattice
+  requires odd dimensions).
+* Generation runs on the main thread; huge mazes (> 300×300) should generate the `MazeGrid` off the
+  main thread and apply the mesh afterwards.
+* Modes: mesh (recommended) and prefab mode. Per-wall objects with individual materials are not
+  supported out of the box.
+
+## Testing
+
+```bash
+python3 Tools/Reference/verify_maze_reference.py      # 658 invariant checks (no Unity needed)
+python3 Tools/Reference/benchmark_reference.py        # performance tables
+node Tools/Reference/lint_csharp.mjs Assets/Code      # C# syntax check (optional, node)
+```
+
+In Unity: **Window → General → Test Runner → EditMode → Run All**, and
+**Tools → Maze → Validate Generator (all algorithms)**.
+
+## Third party assets
+
+`Assets/Thirdparty/Ciathyza/Gridbox Prototype Materials` are textures and **Standard** (built-in
+pipeline) materials from the Unity Asset Store package
+[Gridbox Prototype Materials](https://assetstore.unity.com/packages/2d/textures-materials/gridbox-prototype-materials-129127)
+by Ciathyza, included so the demo looks the same out of the box. The URP/HDRP material variants and
+the template PSD that shipped with the package were removed - they only produce pink shaders in this
+project - the textures stay available for building your own materials. The package is covered by its
+own Asset Store license, not by this repository's license.
 
 ## Acknowledgements
- - [Maze Generation: Prim's Algorithm](https://weblog.jamisbuck.org/2011/1/10/maze-generation-prim-s-algorithm)
 
-
+* [Maze Generation: Prim's Algorithm](https://weblog.jamisbuck.org/2011/1/10/maze-generation-prim-s-algorithm)
+  and the rest of Jamis Buck's maze generation series.
+* [Arne Stenkrona - MazeFun](https://github.com/ArneStenkrona/MazeFun): origin of the illustrations
+  used by the original README (the illustrations in this README are generated from the algorithms).
 
 ## License
 
-This project is licensed under the [MIT](https://choosealicense.com/licenses/mit/) License - see the LICENSE.md file for details 
-
+Copyright (c) 2026 Ketan Dutt - **All rights reserved**. See [LICENSE](LICENSE) for the complete
+terms (viewing/evaluation only; commercial use requires a separate written license; AI/ML training
+use is not permitted). For commercial licensing contact <ketan6196@gmail.com>.
