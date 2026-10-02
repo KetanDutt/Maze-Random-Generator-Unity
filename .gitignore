@@ -70,3 +70,20 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# ---------------------------------------------------------------------------
+# Tooling of this project (not part of the Unity project)
+# ---------------------------------------------------------------------------
+
+# Python caches for Tools/Reference
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node modules for the optional C# syntax check (Tools/Reference/lint_csharp.mjs)
+node_modules/
+package-lock.json
+
+# Local test/benchmark output
+/Tools/**/output/
